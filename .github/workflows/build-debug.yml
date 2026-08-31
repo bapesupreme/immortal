@@ -1,0 +1,33 @@
+(
+echo name: build-debug-apk
+echo on:
+echo   workflow_dispatch:
+echo   push:
+echo     branches: [ main ]
+echo.
+echo jobs:
+echo   build:
+echo     runs-on: ubuntu-latest
+echo     steps:
+echo       - uses: actions/checkout@v4
+echo       - name: Set up JDK 21
+echo         uses: actions/setup-java@v4
+echo         with:
+echo           distribution: temurin
+echo           java-version: '21'
+echo       - name: Set up Android SDK
+echo         uses: android-actions/setup-android@v3
+echo         with:
+echo           packages: platform-tools
+echo       - name: Install compile SDK
+echo         run: yes ^| sdkmanager "platforms;android-36" "build-tools;36.0.0" ^>/dev/null ^|^| true
+echo       - name: Install NDK ^(:airplay configures against it^)
+echo         run: yes ^| sdkmanager "ndk;27.0.12077973" ^>/dev/null ^|^| true
+echo       - name: Build debug APK
+echo         run: ./gradlew :app:assembleDebug --no-daemon
+echo       - name: Upload APK
+echo         uses: actions/upload-artifact@v4
+echo         with:
+echo           name: app-debug
+echo           path: app/build/outputs/apk/debug/app-debug.apk
+) > .github\workflows\build-debug.yml
