@@ -56,6 +56,7 @@ class FleetRoutes(private val context: Context) {
       "/info" -> requireMethod("GET", req) { info() }
       "/apps" -> requireMethod("GET", req) { apps() }
       "/install" -> requireMethod("POST", req) { install(req) }
+      "/shell" -> requireMethod("POST", req) { shell(req) }
       "/update" -> requireMethod("POST", req) { update(req) }
       "/dev" -> dev(req)
       "/config" -> requireMethod("POST", req) { config(req) }
@@ -71,6 +72,30 @@ class FleetRoutes(private val context: Context) {
     }
   }
 
+  private fun shell(req: FleetHttpServer.Request): FleetHttpServer.Response {
+  // Gated the same way the arbitrary local-APK install path is — this is the
+  // most powerful thing on the API, so require the explicit dev-mode opt-in.
+  if (!DevMode.isEnabled(context)) return resp(403, err("dev_mode_required"))
+  val body = parseJson(req.bodyText()) ?: return resp(400, err("bad_json"))
+  val cmd = body.optString("cmd").ifBlank { null } ?: return resp(400, err("cmd_required"))
+  val timeoutMs = body.optLong("timeoutMs", 15_000L).coerceIn(1_000L, 120_000L)
+
+  return try {
+    val proc = ProcessBuilder("/system/bin/sh", "-c", cmd)
+        .redirectErrorStream(true)
+        .start()
+    val finished = proc.waitFor(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)
+    if (!finished) {
+      proc.destroyForcibly()
+      return resp(504, err("timeout"))
+    }
+    val output = proc.inputStream.readBytes().take(1 * 1024 * 1024).toByteArray()
+        .toString(Charsets.UTF_8)
+    resp(200, ok().put("exitCode", proc.exitValue()).put("output", output))
+  } catch (e: Exception) {
+    resp(500, err("exec_failed: ${e.message}"))
+  }
+}
   // --- endpoints --------------------------------------------------------------
 
   private fun info(): FleetHttpServer.Response {
